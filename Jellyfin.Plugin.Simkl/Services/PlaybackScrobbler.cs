@@ -74,8 +74,13 @@ namespace Jellyfin.Plugin.Simkl.Services
             };
         }
 
-        private async void OnPlaybackProgress(object? sessions, PlaybackProgressEventArgs e)
+        private void OnPlaybackProgress(object? sessions, PlaybackProgressEventArgs e)
         {
+            // Scrobbling disabled
+            return;
+
+            // Original scrobbling code (disabled)
+            /*
             if (DateTime.UtcNow < _nextTry)
             {
                 return;
@@ -83,15 +88,25 @@ namespace Jellyfin.Plugin.Simkl.Services
 
             _nextTry = DateTime.UtcNow.AddSeconds(30);
             await ScrobbleSession(e);
+            */
         }
 
-        private async void OnPlaybackStopped(object? sessions, PlaybackStopEventArgs e)
+        private void OnPlaybackStopped(object? sessions, PlaybackStopEventArgs e)
         {
-            await ScrobbleSession(e);
+            // Scrobbling disabled
+            return;
+
+            // Original scrobbling code (disabled)
+            // await ScrobbleSession(e);
         }
 
-        private async Task ScrobbleSession(PlaybackProgressEventArgs eventArgs)
+        private Task ScrobbleSession(PlaybackProgressEventArgs eventArgs)
         {
+            // Scrobbling disabled - returning early without sending any data to Simkl
+            return Task.CompletedTask;
+
+            // Original scrobbling code (disabled to prevent sending watch data to Simkl)
+            /*
             try
             {
                 var userId = eventArgs.Session.UserId;
@@ -145,21 +160,24 @@ namespace Jellyfin.Plugin.Simkl.Services
             {
                 _logger.LogError(ex, "Caught unknown exception while trying to scrobble");
             }
+            */
         }
 
         /// <inheritdoc />
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            _sessionManager.PlaybackProgress += OnPlaybackProgress;
-            _sessionManager.PlaybackStopped += OnPlaybackStopped;
+            // Scrobbling disabled - not subscribing to playback events
+            // _sessionManager.PlaybackProgress += OnPlaybackProgress;
+            // _sessionManager.PlaybackStopped += OnPlaybackStopped;
             return Task.CompletedTask;
         }
 
         /// <inheritdoc />
         public Task StopAsync(CancellationToken cancellationToken)
         {
-            _sessionManager.PlaybackProgress -= OnPlaybackProgress;
-            _sessionManager.PlaybackStopped -= OnPlaybackStopped;
+            // Scrobbling disabled - no events to unsubscribe from
+            // _sessionManager.PlaybackProgress -= OnPlaybackProgress;
+            // _sessionManager.PlaybackStopped -= OnPlaybackStopped;
             return Task.CompletedTask;
         }
     }

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using MediaBrowser.Model.Dto;
 
@@ -9,6 +10,15 @@ namespace Jellyfin.Plugin.Simkl.API.Objects
     /// </summary>
     public class SimklShow : SimklMediaObject
     {
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SimklShow"/> class.
+        /// </summary>
+        public SimklShow()
+        {
+            Title = string.Empty;
+            Seasons = Array.Empty<Season>();
+        }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="SimklShow"/> class.
         /// </summary>
@@ -38,7 +48,7 @@ namespace Jellyfin.Plugin.Simkl.API.Objects
         /// Gets or sets title.
         /// </summary>
         [JsonPropertyName("title")]
-        public string Title { get; set; }
+        public string Title { get; set; } = string.Empty;
 
         /// <summary>
         /// Gets or sets year.
@@ -50,6 +60,6 @@ namespace Jellyfin.Plugin.Simkl.API.Objects
         /// Gets or sets seasons.
         /// </summary>
         [JsonPropertyName("seasons")]
-        public IReadOnlyList<Season> Seasons { get; set; }
+        public IReadOnlyList<Season> Seasons { get; set; } = Array.Empty<Season>();
     }
 }

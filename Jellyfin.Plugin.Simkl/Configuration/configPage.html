@@ -35,26 +35,47 @@
                     <h3>Hello again <span id="simklName">USERNAME</span>!</h3>
                     <button onclick="SimklConfig.logOut();" is="emby-button" type="button" class="raised button block">
                         <span>Log Out</span></button>
-                    <h2>Scrobbling options:</h2>
-                    <div class="checkboxcontainer">
-                        <label>
-                            <input is="emby-checkbox" type="checkbox" id="ScrobbleMovies"/>
-                            <span>Autoscrobbling Movies</span>
-                        </label>
-                    </div>
-                    <div class="checkboxcontainer">
-                        <label>
-                            <input is="emby-checkbox" type="checkbox" id="ScrobbleShows"/>
-                            <span>Autoscrobbling TV Shows</span>
-                        </label>
-                    </div>
+                    <h2>Simkl List Import:</h2>
                     <div class="inputContainer">
-                        <input is="emby-input" id="ScrobblePercentage" type="number" min="0" max="100" pattern="[0-9]*"
-                               label="Scrobbling percentage:"/>
+                        <select is="emby-select" id="ImportListStatus" label="Import from List:">
+                            <option value="plantowatch">Plan to Watch</option>
+                            <option value="watching">Currently Watching</option>
+                            <option value="completed">Completed</option>
+                            <option value="hold">On Hold</option>
+                            <option value="dropped">Dropped</option>
+                        </select>
                         <div class="fieldDescription">
-                            Percentage watched needed to scrobble
+                            Select which Simkl list to import from
                         </div>
                     </div>
+                    <div class="inputContainer">
+                        <select is="emby-select" id="MoviesLibraryId" label="Movies Library:">
+                            <option value="">-- Select Library --</option>
+                        </select>
+                        <div class="fieldDescription">
+                            Select library where movie folders will be created
+                        </div>
+                    </div>
+                    <div class="inputContainer">
+                        <select is="emby-select" id="TvShowsLibraryId" label="TV Shows Library:">
+                            <option value="">-- Select Library --</option>
+                        </select>
+                        <div class="fieldDescription">
+                            Select library where TV show folders will be created
+                        </div>
+                    </div>
+                    <div class="inputContainer">
+                        <input is="emby-input" id="MovieStubFilePath" type="text"
+                               label="Movie Stub File Path:" placeholder="e.g., C:\Media\movie_stub.mp4"/>
+                        <div class="fieldDescription">
+                            Path to the stub file to copy to movie folders (leave empty to use default movie_stub.mp4)
+                        </div>
+                    </div>
+                    <button onclick="SimklConfig.importPlanToWatch();" is="emby-button" type="button"
+                            class="raised button-submit block">
+                        <span>Import Selected List</span>
+                    </button>
+                    <div id="importStatus" style="margin-top: 10px;"></div>
                     <button is="emby-button" type="submit" class="raised button-submit block"><span>${Save}</span>
                     </button>
                     <button is="emby-button" type="button" class="raised block" onclick="history.back();"><span>${Cancel}</span>
@@ -65,7 +86,7 @@
     </div>
     <script type="text/javascript">
         var SimklConfig = {
-            guid: "07CAEF58-A94B-4211-A62C-F9774E04EBDB",
+            guid: "ce05df96-ddc3-43a2-915c-536f1ad61556",
             onLoginProcess: false,
             configCache: [],
             loginTimer: null,
@@ -85,6 +106,40 @@
                 users.forEach(function (user) {
                     SimklConfig.userSelector.append(new Option(user.Name, user.Id));
                 });
+            },
+            populateLibraries: async function () {
+                try {
+                    const request = {
+                        url: window.ApiClient.getUrl('Simkl/libraries'),
+                        type: 'GET',
+                        headers: {
+                            accept: 'application/json'
+                        }
+                    };
+
+                    const libraries = await window.ApiClient.fetch(request);
+                    const moviesSelect = document.querySelector('#MoviesLibraryId');
+                    const tvShowsSelect = document.querySelector('#TvShowsLibraryId');
+
+                    if (moviesSelect && tvShowsSelect) {
+                        // Clear existing options except the first one
+                        while (moviesSelect.options.length > 1) {
+                            moviesSelect.remove(1);
+                        }
+                        while (tvShowsSelect.options.length > 1) {
+                            tvShowsSelect.remove(1);
+                        }
+
+                        // Populate dropdowns
+                        libraries.forEach(function (library) {
+                            const option = new Option(library.Name, library.Id);
+                            moviesSelect.append(option.cloneNode(true));
+                            tvShowsSelect.append(option);
+                        });
+                    }
+                } catch (error) {
+                    console.error("Error fetching libraries:", error);
+                }
             },
             loadConfig: async function (user, config) {
                 if (config != null) {
@@ -122,6 +177,39 @@
                     }
                 }
 
+                // Ensure new properties exist
+                const moviesPathInput = document.querySelector("#configOptionsContainer #MoviesLibraryPath");
+                if (moviesPathInput) {
+                    uconfig.MoviesLibraryPath = moviesPathInput.value || "";
+                }
+
+                const tvShowsPathInput = document.querySelector("#configOptionsContainer #TvShowsLibraryPath");
+                if (tvShowsPathInput) {
+                    uconfig.TvShowsLibraryPath = tvShowsPathInput.value || "";
+                }
+
+                const importListStatusInput = document.querySelector("#configOptionsContainer #ImportListStatus");
+                if (importListStatusInput) {
+                    uconfig.ImportListStatus = importListStatusInput.value || "plantowatch";
+                }
+
+                const moviesLibrarySelect = document.querySelector("#configOptionsContainer #MoviesLibraryId");
+                if (moviesLibrarySelect) {
+                    // Set to empty string if no value selected, JSON will deserialize empty string to Guid.Empty
+                    uconfig.MoviesLibraryId = moviesLibrarySelect.value || "";
+                }
+
+                const tvShowsLibrarySelect = document.querySelector("#configOptionsContainer #TvShowsLibraryId");
+                if (tvShowsLibrarySelect) {
+                    // Set to empty string if no value selected, JSON will deserialize empty string to Guid.Empty
+                    uconfig.TvShowsLibraryId = tvShowsLibrarySelect.value || "";
+                }
+
+                const movieStubFilePathInput = document.querySelector("#configOptionsContainer #MovieStubFilePath");
+                if (movieStubFilePathInput) {
+                    uconfig.MovieStubFilePath = movieStubFilePathInput.value || "";
+                }
+
                 console.log("Saving config:");
                 console.log(this.configCache);
                 ApiClient.updatePluginConfiguration(this.guid, this.configCache).then(Dashboard.processPluginConfigurationUpdateResult);
@@ -138,6 +226,26 @@
                     const input = document.querySelector("#configOptionsContainer input[type=number]#" + key);
                     if (input) {
                         input.value = userConfig[key];
+                    }
+
+                    const textInput = document.querySelector("#configOptionsContainer input[type=text]#" + key);
+                    if (textInput) {
+                        textInput.value = userConfig[key] || "";
+                    }
+
+                    const selectInput = document.querySelector("#configOptionsContainer select#" + key);
+                    if (selectInput) {
+                        const value = userConfig[key];
+                        // Handle Guid values - they come as strings from JSON
+                        if (value != null) {
+                            const stringValue = typeof value === 'string' ? value : (value.toString ? value.toString() : '');
+                            // Only set if it's a valid non-empty Guid
+                            if (stringValue && stringValue !== '' && stringValue !== '00000000-0000-0000-0000-000000000000') {
+                                selectInput.value = stringValue;
+                            } else {
+                                selectInput.value = '';
+                            }
+                        }
                     }
                 }
             },
@@ -228,6 +336,51 @@
                 console.log(this.configCache);
                 window.ApiClient.updatePluginConfiguration(this.guid, this.configCache);
                 this.loadConfig(uguid);
+            },
+            importPlanToWatch: async function () {
+                const uguid = SimklConfig.userSelector.value;
+                const statusDiv = document.querySelector('#importStatus');
+                const listStatusSelect = document.querySelector('#ImportListStatus');
+                const listStatusName = listStatusSelect ? listStatusSelect.options[listStatusSelect.selectedIndex].text : "list";
+                statusDiv.innerHTML = `Importing ${listStatusName}...`;
+                statusDiv.style.color = "blue";
+
+                try {
+                    const request = {
+                        url: window.ApiClient.getUrl('Simkl/import/plan-to-watch/' + uguid),
+                        type: 'POST',
+                        headers: {
+                            accept: 'application/json'
+                        }
+                    };
+
+                    const result = await window.ApiClient.fetch(request);
+                    
+                    if (result.Success) {
+                        let message = "Import completed successfully!<br/>";
+                        if (result.MoviesCreated > 0) {
+                            message += `Created ${result.MoviesCreated} movie folder(s). `;
+                            if (result.MoviesFilesCopied > 0) {
+                                message += `Copied ${result.MoviesFilesCopied} stub file(s). `;
+                            }
+                        }
+                        if (result.ShowsCreated > 0) {
+                            message += `Created ${result.ShowsCreated} TV show folder(s). `;
+                        }
+                        if (result.MoviesErrors > 0 || result.ShowsErrors > 0) {
+                            message += `<br/>Errors: ${result.MoviesErrors} movie errors, ${result.ShowsErrors} TV show errors.`;
+                        }
+                        statusDiv.innerHTML = message;
+                        statusDiv.style.color = "green";
+                    } else {
+                        statusDiv.innerHTML = "Import failed: " + (result.Error || "Unknown error");
+                        statusDiv.style.color = "red";
+                    }
+                } catch (error) {
+                    console.error("Import error:", error);
+                    statusDiv.innerHTML = "Import failed. See browser console for details.";
+                    statusDiv.style.color = "red";
+                }
             }
         }
 
@@ -295,6 +448,7 @@
                 Dashboard.showLoadingMsg();
                 await Promise.all([
                     window.ApiClient.getUsers().then(SimklConfig.populateUsers),
+                    SimklConfig.populateLibraries(),
                     window.ApiClient.getPluginConfiguration(SimklConfig.guid).then(SimklConfig.loadConfig.bind(SimklConfig, ApiClient.getCurrentUserId()))]);
                 Dashboard.hideLoadingMsg();
             });

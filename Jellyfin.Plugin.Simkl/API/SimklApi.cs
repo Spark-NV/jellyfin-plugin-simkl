@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics.Tracing;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -107,6 +109,82 @@ namespace Jellyfin.Plugin.Simkl.API
                 // https://emby.media/community/index.php?/topic/61889-wiki-issue-resultfactorythrowerror/
                 return new UserSettings { Error = "user_token_failed" };
             }
+        }
+
+        /// <summary>
+        /// Get list items by status.
+        /// </summary>
+        /// <param name="userToken">User token.</param>
+        /// <param name="status">Status to filter by (e.g., plantowatch, watching, completed, hold, dropped).</param>
+        /// <returns>List response.</returns>
+        public async Task<PlanToWatchResponse?> GetListByStatus(string userToken, string status = "plantowatch")
+        {
+            try
+            {
+                // Validate status value
+                var validStatuses = new[] { "plantowatch", "watching", "completed", "hold", "dropped" };
+                if (!validStatuses.Contains(status.ToLowerInvariant()))
+                {
+                    _logger.LogWarning("Invalid status {Status}, defaulting to plantowatch", status);
+                    status = "plantowatch";
+                }
+
+                var statusLower = status.ToLowerInvariant();
+                var result = new PlanToWatchResponse { Movies = new List<SimklMovie>(), Shows = new List<SimklShow>() };
+
+                // Fetch movies
+                var movieUri = $"/sync/all-items/movie/{statusLower}?extended=full";
+                _logger.LogDebug("Requesting Simkl API for movies: {Uri}", movieUri);
+                var movieListResponse = await Get<MovieListResponse>(movieUri, userToken);
+                if (movieListResponse != null && movieListResponse.Movies != null)
+                {
+                    result.Movies = movieListResponse.Movies;
+                    _logger.LogDebug("Retrieved {Count} movies from Simkl", movieListResponse.Movies.Count);
+                }
+                else
+                {
+                    _logger.LogDebug("No movies returned from Simkl API");
+                }
+
+                // Fetch TV shows
+                var tvUri = $"/sync/all-items/tv/{statusLower}?extended=full";
+                _logger.LogDebug("Requesting Simkl API for TV shows: {Uri}", tvUri);
+                var showListResponse = await Get<ShowListResponse>(tvUri, userToken);
+                if (showListResponse != null && showListResponse.Shows != null)
+                {
+                    result.Shows = showListResponse.Shows;
+                    _logger.LogDebug("Retrieved {Count} TV shows from Simkl", showListResponse.Shows.Count);
+                }
+                else
+                {
+                    _logger.LogDebug("No TV shows returned from Simkl API");
+                }
+
+                _logger.LogDebug("Simkl API response: {MovieCount} movies, {ShowCount} shows", result.Movies?.Count ?? 0, result.Shows?.Count ?? 0);
+                return result;
+            }
+            catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _logger.LogError(e, "Invalid user token {UserToken}", userToken);
+                SimklPlugin.Instance?.Configuration.DeleteUserToken(userToken);
+                throw new InvalidTokenException("Invalid user token " + userToken);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error retrieving list from Simkl API for status: {Status}", status);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Get plan to watch list.
+        /// </summary>
+        /// <param name="userToken">User token.</param>
+        /// <returns>Plan to watch response.</returns>
+        [Obsolete("Use GetListByStatus instead")]
+        public async Task<PlanToWatchResponse?> GetPlanToWatch(string userToken)
+        {
+            return await GetListByStatus(userToken, "plantowatch");
         }
 
         /// <summary>
@@ -277,7 +355,37 @@ namespace Jellyfin.Plugin.Simkl.API
             options.Method = HttpMethod.Get;
             var responseMessage = await _httpClientFactory.CreateClient(NamedClient.Default)
                 .SendAsync(options);
-            return await responseMessage.Content.ReadFromJsonAsync<T>(_jsonSerializerOptions);
+
+            if (!responseMessage.IsSuccessStatusCode)
+            {
+                _logger.LogError("API request failed with status {StatusCode}: {Url}", responseMessage.StatusCode, url);
+                return default;
+            }
+
+            var content = await responseMessage.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                _logger.LogWarning("API response is empty for: {Url}", url);
+                return default;
+            }
+
+            _logger.LogDebug("API response content (first 500 chars): {Content}", content.Length > 500 ? content.Substring(0, 500) : content);
+
+            try
+            {
+                var result = await responseMessage.Content.ReadFromJsonAsync<T>(_jsonSerializerOptions);
+                if (result == null)
+                {
+                    _logger.LogWarning("JSON deserialization returned null for: {Url}. Content: {Content}", url, content.Length > 500 ? content.Substring(0, 500) : content);
+                }
+
+                return result;
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to deserialize JSON response for: {Url}. Content: {Content}", url, content.Length > 500 ? content.Substring(0, 500) : content);
+                throw;
+            }
         }
 
         /// <summary>

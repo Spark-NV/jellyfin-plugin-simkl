@@ -66,5 +66,40 @@ namespace Jellyfin.Plugin.Simkl.Configuration
         /// Gets or sets user id.
         /// </summary>
         public Guid Id { get; set; }
+
+        /// <summary>
+        /// Gets or sets the movies library ID.
+        /// </summary>
+        public Guid MoviesLibraryId { get; set; } = Guid.Empty;
+
+        /// <summary>
+        /// Gets or sets the TV shows library ID.
+        /// </summary>
+        public Guid TvShowsLibraryId { get; set; } = Guid.Empty;
+
+        /// <summary>
+        /// Gets or sets the movies library path (deprecated, use MoviesLibraryId).
+        /// </summary>
+        [Obsolete("Use MoviesLibraryId instead")]
+        public string MoviesLibraryPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the TV shows library path (deprecated, use TvShowsLibraryId).
+        /// </summary>
+        [Obsolete("Use TvShowsLibraryId instead")]
+        public string TvShowsLibraryPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the Simkl list status to import from.
+        /// </summary>
+        /// <remarks>
+        /// Valid values: plantowatch, watching, completed, hold, dropped.
+        /// </remarks>
+        public string ImportListStatus { get; set; } = "plantowatch";
+
+        /// <summary>
+        /// Gets or sets the movie stub file path to copy to movie folders.
+        /// </summary>
+        public string MovieStubFilePath { get; set; } = string.Empty;
     }
 }

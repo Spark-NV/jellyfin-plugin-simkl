@@ -13,7 +13,10 @@ namespace Jellyfin.Plugin.Simkl
         public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
         {
             serviceCollection.AddSingleton<SimklApi>();
-            serviceCollection.AddHostedService<PlaybackScrobbler>();
+            serviceCollection.AddSingleton<PlanToWatchImporter>();
+            serviceCollection.AddSingleton<ImportSimklListTask>();
+            // Scrobbling disabled - service registration commented out
+            // serviceCollection.AddHostedService<PlaybackScrobbler>();
         }
     }
 }
