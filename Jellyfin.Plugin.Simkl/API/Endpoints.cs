@@ -1,7 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.Simkl.API.Objects;
 using Jellyfin.Plugin.Simkl.API.Responses;
+using Jellyfin.Plugin.Simkl.Configuration;
+using Jellyfin.Plugin.Simkl.Services;
+using MediaBrowser.Controller.Library;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,14 +21,20 @@ namespace Jellyfin.Plugin.Simkl.API
     public class Endpoints : ControllerBase
     {
         private readonly SimklApi _simklApi;
+        private readonly PlanToWatchImporter _planToWatchImporter;
+        private readonly ILibraryManager _libraryManager;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Endpoints"/> class.
         /// </summary>
         /// <param name="simklApi">Instance of the <see cref="SimklApi"/>.</param>
-        public Endpoints(SimklApi simklApi)
+        /// <param name="planToWatchImporter">Instance of the <see cref="PlanToWatchImporter"/>.</param>
+        /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/>.</param>
+        public Endpoints(SimklApi simklApi, PlanToWatchImporter planToWatchImporter, ILibraryManager libraryManager)
         {
             _simklApi = simklApi;
+            _planToWatchImporter = planToWatchImporter;
+            _libraryManager = libraryManager;
         }
 
         /// <summary>
@@ -50,18 +61,68 @@ namespace Jellyfin.Plugin.Simkl.API
         /// <summary>
         /// Gets the settings for the user.
         /// </summary>
-        /// <param name="userId">The user id.</param>
         /// <returns>The user settings.</returns>
-        [HttpGet("users/settings/{userId}")]
-        public async Task<ActionResult<UserSettings?>> GetUserSettings([FromRoute] Guid userId)
+        [HttpGet("users/settings")]
+        public async Task<ActionResult<UserSettings?>> GetUserSettings()
         {
-            var userConfiguration = SimklPlugin.Instance?.Configuration.GetByGuid(userId);
-            if (userConfiguration == null)
+            var configuration = SimklPlugin.Instance?.Configuration;
+            if (configuration == null || string.IsNullOrEmpty(configuration.UserToken))
             {
                 return NotFound();
             }
 
-            return await _simklApi.GetUserSettings(userConfiguration.UserToken);
+            return await _simklApi.GetUserSettings(configuration.UserToken);
+        }
+
+        /// <summary>
+        /// Gets the list of libraries.
+        /// </summary>
+        /// <returns>List of libraries.</returns>
+        [HttpGet("libraries")]
+        public ActionResult<List<LibraryInfo>> GetLibraries()
+        {
+            var libraries = _libraryManager.GetVirtualFolders()
+                .Select(vf => new LibraryInfo
+                {
+                    Id = Guid.TryParse(vf.ItemId, out var guid) ? guid : Guid.Empty,
+                    Name = vf.Name,
+                    LibraryType = "Library",
+                    Path = vf.LibraryOptions?.PathInfos?.FirstOrDefault()?.Path ?? string.Empty
+                })
+                .ToList();
+
+            return libraries;
+        }
+
+        /// <summary>
+        /// Import plan to watch list and create folders.
+        /// </summary>
+        /// <returns>The import result.</returns>
+        [HttpPost("import/plan-to-watch")]
+        public async Task<ActionResult<PlanToWatchImporter.ImportResult>> ImportPlanToWatch()
+        {
+            var configuration = SimklPlugin.Instance?.Configuration;
+            if (configuration == null)
+            {
+                return NotFound();
+            }
+
+#pragma warning disable CS0618 // Type or member is obsolete
+            if (configuration.MoviesLibraryId == Guid.Empty && configuration.TvShowsLibraryId == Guid.Empty
+                && string.IsNullOrEmpty(configuration.MoviesLibraryPath) && string.IsNullOrEmpty(configuration.TvShowsLibraryPath))
+#pragma warning restore CS0618
+            {
+                return BadRequest("Please configure at least one library (Movies or TV Shows) before importing.");
+            }
+
+            var result = await _planToWatchImporter.ImportPlanToWatch(configuration);
+
+            if (!result.Success && !string.IsNullOrEmpty(result.Error))
+            {
+                return BadRequest(result);
+            }
+
+            return result;
         }
     }
 }

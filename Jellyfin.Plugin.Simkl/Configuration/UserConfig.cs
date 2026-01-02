@@ -12,13 +12,14 @@ namespace Jellyfin.Plugin.Simkl.Configuration
         /// </summary>
         public UserConfig()
         {
-            ScrobbleMovies = true;
-            ScrobbleShows = true;
+            ScrobbleMovies = false;
+            ScrobbleShows = false;
             ScrobblePercentage = 70;
             ScrobbleNowWatchingPercentage = 5;
             MinLength = 5;
             UserToken = string.Empty; // Todo: check if token is still valid
             ScrobbleTimeout = 30;
+            TriggerLibraryScanAfterImport = true;
         }
 
         /// <summary>
@@ -66,5 +67,62 @@ namespace Jellyfin.Plugin.Simkl.Configuration
         /// Gets or sets user id.
         /// </summary>
         public Guid Id { get; set; }
+
+        /// <summary>
+        /// Gets or sets the movies library ID.
+        /// </summary>
+        public Guid MoviesLibraryId { get; set; } = Guid.Empty;
+
+        /// <summary>
+        /// Gets or sets the TV shows library ID.
+        /// </summary>
+        public Guid TvShowsLibraryId { get; set; } = Guid.Empty;
+
+        /// <summary>
+        /// Gets or sets the anime library ID.
+        /// </summary>
+        public Guid AnimeLibraryId { get; set; } = Guid.Empty;
+
+        /// <summary>
+        /// Gets or sets the anime movies library ID.
+        /// </summary>
+        public Guid AnimeMoviesLibraryId { get; set; } = Guid.Empty;
+
+        /// <summary>
+        /// Gets or sets the movies library path (deprecated, use MoviesLibraryId).
+        /// </summary>
+        [Obsolete("Use MoviesLibraryId instead")]
+        public string MoviesLibraryPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the TV shows library path (deprecated, use TvShowsLibraryId).
+        /// </summary>
+        [Obsolete("Use TvShowsLibraryId instead")]
+        public string TvShowsLibraryPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the anime library path (deprecated, use AnimeLibraryId).
+        /// </summary>
+        [Obsolete("Use AnimeLibraryId instead")]
+        public string AnimeLibraryPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the anime movies library path (deprecated, use AnimeMoviesLibraryId).
+        /// </summary>
+        [Obsolete("Use AnimeMoviesLibraryId instead")]
+        public string AnimeMoviesLibraryPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the Simkl list status to import from.
+        /// </summary>
+        /// <remarks>
+        /// Valid values: plantowatch, watching, completed, hold, dropped.
+        /// </remarks>
+        public string ImportListStatus { get; set; } = "plantowatch";
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to trigger a library scan after importing lists.
+        /// </summary>
+        public bool TriggerLibraryScanAfterImport { get; set; }
     }
 }

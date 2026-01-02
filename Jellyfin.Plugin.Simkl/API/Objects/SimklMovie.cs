@@ -12,6 +12,13 @@ namespace Jellyfin.Plugin.Simkl.API.Objects
         /// <summary>
         /// Initializes a new instance of the <see cref="SimklMovie"/> class.
         /// </summary>
+        public SimklMovie()
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="SimklMovie"/> class.
+        /// </summary>
         /// <param name="item">The base item dto.</param>
         public SimklMovie(BaseItemDto item)
         {
@@ -32,6 +39,12 @@ namespace Jellyfin.Plugin.Simkl.API.Objects
         /// </summary>
         [JsonPropertyName("year")]
         public int? Year { get; set; }
+
+        /// <summary>
+        /// Gets or sets the runtime in minutes.
+        /// </summary>
+        [JsonPropertyName("runtime")]
+        public int? Runtime { get; set; }
 
         /// <summary>
         /// Gets or sets watched at.

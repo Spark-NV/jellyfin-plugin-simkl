@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics.Tracing;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -13,9 +15,9 @@ using Jellyfin.Extensions.Json;
 using Jellyfin.Plugin.Simkl.API.Exceptions;
 using Jellyfin.Plugin.Simkl.API.Objects;
 using Jellyfin.Plugin.Simkl.API.Responses;
+using Jellyfin.Plugin.Simkl.Logging;
 using MediaBrowser.Common.Net;
 using MediaBrowser.Model.Dto;
-using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.Simkl.API
 {
@@ -25,7 +27,7 @@ namespace Jellyfin.Plugin.Simkl.API
     public class SimklApi
     {
         /* INTERFACES */
-        private readonly ILogger<SimklApi> _logger;
+        private readonly SimklLogger _logger;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly JsonSerializerOptions _jsonSerializerOptions;
         private readonly JsonSerializerOptions _caseInsensitiveJsonSerializerOptions;
@@ -55,11 +57,10 @@ namespace Jellyfin.Plugin.Simkl.API
         /// <summary>
         /// Initializes a new instance of the <see cref="SimklApi"/> class.
         /// </summary>
-        /// <param name="logger">Instance of the <see cref="ILogger{SimklApi}"/> interface.</param>
         /// <param name="httpClientFactory">Instance of the <see cref="IHttpClientFactory"/> interface.</param>
-        public SimklApi(ILogger<SimklApi> logger, IHttpClientFactory httpClientFactory)
+        public SimklApi(IHttpClientFactory httpClientFactory)
         {
-            _logger = logger;
+            _logger = SimklLoggerFactory.Instance;
             _httpClientFactory = httpClientFactory;
             _jsonSerializerOptions = JsonDefaults.Options;
             _caseInsensitiveJsonSerializerOptions = new JsonSerializerOptions(_jsonSerializerOptions)
@@ -110,6 +111,93 @@ namespace Jellyfin.Plugin.Simkl.API
         }
 
         /// <summary>
+        /// Get list items by status.
+        /// </summary>
+        /// <param name="userToken">User token.</param>
+        /// <param name="status">Status to filter by (e.g., plantowatch, watching, completed, hold, dropped).</param>
+        /// <returns>List response.</returns>
+        public async Task<PlanToWatchResponse?> GetListByStatus(string userToken, string status = "plantowatch")
+        {
+            try
+            {
+                // Validate status value
+                var validStatuses = new[] { "plantowatch", "watching", "completed", "hold", "dropped" };
+                if (!validStatuses.Contains(status.ToLowerInvariant()))
+                {
+                    _logger.LogWarning("Invalid status {0}, defaulting to plantowatch", status);
+                    status = "plantowatch";
+                }
+
+                var statusLower = status.ToLowerInvariant();
+                var result = new PlanToWatchResponse { Movies = new List<SimklMovie>(), Shows = new List<SimklShow>(), Anime = new List<SimklAnimeItem>() };
+
+                // Fetch movies
+                var movieUri = $"/sync/all-items/movie/{statusLower}?extended=full";
+                var movieListResponse = await Get<MovieListResponse>(movieUri, userToken);
+                if (movieListResponse != null && movieListResponse.Movies != null)
+                {
+                    result.Movies = movieListResponse.Movies;
+                    _logger.LogDebug("Retrieved {0} movies from Simkl", movieListResponse.Movies.Count);
+                }
+                else
+                {
+                    _logger.LogDebug("No movies returned from Simkl API");
+                }
+
+                // Fetch TV shows
+                var tvUri = $"/sync/all-items/tv/{statusLower}?extended=full";
+                var showListResponse = await Get<ShowListResponse>(tvUri, userToken);
+                if (showListResponse != null && showListResponse.Shows != null)
+                {
+                    result.Shows = showListResponse.Shows;
+                    _logger.LogDebug("Retrieved {0} TV shows from Simkl", showListResponse.Shows.Count);
+                }
+                else
+                {
+                    _logger.LogDebug("No TV shows returned from Simkl API");
+                }
+
+                // Fetch anime
+                var animeUri = $"/sync/all-items/anime/{statusLower}?extended=full";
+                var animeListResponse = await Get<AnimeListResponse>(animeUri, userToken);
+                if (animeListResponse != null && animeListResponse.AnimeItems != null)
+                {
+                    result.Anime = animeListResponse.AnimeItems;
+                }
+
+                _logger.LogDebug("Simkl API response: {0} movies, {1} shows, {2} anime", result.Movies?.Count ?? 0, result.Shows?.Count ?? 0, result.Anime?.Count ?? 0);
+                return result;
+            }
+            catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _logger.LogError(e, "Invalid user token {0}", userToken);
+                if (SimklPlugin.Instance?.Configuration != null && SimklPlugin.Instance.Configuration.UserToken == userToken)
+                {
+                    SimklPlugin.Instance.Configuration.UserToken = string.Empty;
+                    SimklPlugin.Instance.SaveConfiguration();
+                }
+
+                throw new InvalidTokenException("Invalid user token " + userToken);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "Error retrieving list from Simkl API for status: {0}", status);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Get plan to watch list.
+        /// </summary>
+        /// <param name="userToken">User token.</param>
+        /// <returns>Plan to watch response.</returns>
+        [Obsolete("Use GetListByStatus instead")]
+        public async Task<PlanToWatchResponse?> GetPlanToWatch(string userToken)
+        {
+            return await GetListByStatus(userToken, "plantowatch");
+        }
+
+        /// <summary>
         /// Mark as watched.
         /// </summary>
         /// <param name="item">Item.</param>
@@ -119,9 +207,9 @@ namespace Jellyfin.Plugin.Simkl.API
         {
             var history = CreateHistoryFromItem(item);
             var r = await SyncHistoryAsync(history, userToken);
-            _logger.LogDebug("BaseItem: {@Item}", item);
-            _logger.LogDebug("History: {@History}", history);
-            _logger.LogDebug("Response: {@Response}", r);
+            _logger.LogDebug("BaseItem: {0}", item);
+            _logger.LogDebug("History: {0}", history);
+            _logger.LogDebug("Response: {0}", r?.ToString() ?? "null");
             if (r != null && history.Movies.Count == r.Added.Movies
                 && history.Shows.Count == r.Added.Shows
                 && history.Episodes.Count == r.Added.Episodes)
@@ -156,7 +244,7 @@ namespace Jellyfin.Plugin.Simkl.API
         private async Task<SearchFileResponse?> GetFromFile(string filename)
         {
             var f = new SimklFile { File = filename };
-            _logger.LogInformation("Posting: {@File}", f);
+            _logger.LogInformation("Posting: {0}", f);
             return await Post<SearchFileResponse, SimklFile>("/search/file/", null, f);
         }
 
@@ -230,8 +318,9 @@ namespace Jellyfin.Plugin.Simkl.API
             }
             else if (item.IsSeries == true || (item.Type == BaseItemKind.Series))
             {
-                // Jellyfin sends episode id instead of show id
-                // TODO: TV Shows scrobbling (WIP)
+                // Check if this is anime based on provider IDs or other metadata
+                // For now, we'll treat it as a regular show, but this could be enhanced
+                // to detect anime based on metadata
                 history.Shows.Add(new SimklShow(item));
             }
             else if (item.Type == BaseItemKind.Episode)
@@ -257,8 +346,13 @@ namespace Jellyfin.Plugin.Simkl.API
             }
             catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.Unauthorized)
             {
-                _logger.LogError(e, "Invalid user token {UserToken}, deleting", userToken);
-                SimklPlugin.Instance?.Configuration.DeleteUserToken(userToken);
+                _logger.LogError(e, "Invalid user token {0}, deleting", userToken);
+                if (SimklPlugin.Instance?.Configuration != null && SimklPlugin.Instance.Configuration.UserToken == userToken)
+                {
+                    SimklPlugin.Instance.Configuration.UserToken = string.Empty;
+                    SimklPlugin.Instance.SaveConfiguration();
+                }
+
                 throw new InvalidTokenException("Invalid user token " + userToken);
             }
         }
@@ -277,7 +371,37 @@ namespace Jellyfin.Plugin.Simkl.API
             options.Method = HttpMethod.Get;
             var responseMessage = await _httpClientFactory.CreateClient(NamedClient.Default)
                 .SendAsync(options);
-            return await responseMessage.Content.ReadFromJsonAsync<T>(_jsonSerializerOptions);
+
+            if (!responseMessage.IsSuccessStatusCode)
+            {
+                _logger.LogError("API request failed with status {0}: {1}", responseMessage.StatusCode, url);
+                return default;
+            }
+
+            var content = await responseMessage.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                _logger.LogWarning("API response is empty for: {0}", url);
+                return default;
+            }
+
+            _logger.LogDebug("API response content (first 500 chars): {0}", content.Length > 500 ? content.Substring(0, 500) : content);
+
+            try
+            {
+                var result = await responseMessage.Content.ReadFromJsonAsync<T>(_jsonSerializerOptions);
+                if (result == null)
+                {
+                    _logger.LogWarning("JSON deserialization returned null for: {0}. Content: {1}", url, content.Length > 500 ? content.Substring(0, 500) : content);
+                }
+
+                return result;
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to deserialize JSON response for: {0}. Content: {1}", url, content.Length > 500 ? content.Substring(0, 500) : content);
+                throw;
+            }
         }
 
         /// <summary>

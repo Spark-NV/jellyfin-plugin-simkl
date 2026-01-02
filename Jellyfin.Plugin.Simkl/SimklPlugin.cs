@@ -30,7 +30,7 @@ namespace Jellyfin.Plugin.Simkl
         public static SimklPlugin? Instance { get; private set; }
 
         /// <inheritdoc />
-        public override Guid Id => new Guid("07CAEF58-A94B-4211-A62C-F9774E04EBDB");
+        public override Guid Id => new Guid("ce05df96-ddc3-43a2-915c-536f1ad61556");
 
         /// <inheritdoc />
         public override string Name => "Simkl";
